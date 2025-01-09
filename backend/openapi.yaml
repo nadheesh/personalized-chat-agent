@@ -3,28 +3,21 @@ info:
   title: Question Answering API
   description: An API for adding knowledge and asking questions using a RAG (Retrieval Augmented Generation) system
   version: 1.0.0
-
 servers:
   - url: http://localhost:8000
     description: Local development server
-
 paths:
   /add:
     post:
       summary: Add knowledge to the system
       description: Adds new information to the knowledge base for future question answering
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                content:
-                  type: string
-                  description: The text content to add to the knowledge base
-              required:
-                - content
+      parameters:
+        - name: content
+          in: query
+          required: true
+          schema:
+            type: string
+          description: The text content to add to the knowledge base
       responses:
         '200':
           description: Knowledge base updated successfully
@@ -46,7 +39,6 @@ paths:
                   detail:
                     type: string
                     description: Error message
-
   /ask:
     post:
       summary: Ask a question
@@ -78,7 +70,6 @@ paths:
                   detail:
                     type: string
                     description: Error message
-
 components:
   schemas:
     Message:
@@ -93,7 +84,6 @@ components:
           default: ""
       required:
         - role
-
     ConversationRequest:
       type: object
       properties:
