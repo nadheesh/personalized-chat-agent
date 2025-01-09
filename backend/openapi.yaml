@@ -1,37 +1,33 @@
 openapi: 3.0.0
 info:
-  title: Chat Agent API
-  description: This API allows users to upload PDFs to build a knowledge base and ask questions based on the uploaded documents.
+  title: Question Answering API
+  description: An API for adding knowledge and asking questions using a RAG (Retrieval Augmented Generation) system
   version: 1.0.0
-  contact:
-    name: Nadheesh Jihan
-    email: nadheesh@wso2.com
-  license:
-    name: Apache 2.0
-    url: http://www.apache.org/licenses/LICENSE-2.0.html
+
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+
 paths:
-  /upload_pdf:
+  /add:
     post:
-      summary: Upload a PDF and add its data to the vector store
-      description: Adds data from a PDF file to the vector store, associating the data with a specific user.
-      operationId: addData
+      summary: Add knowledge to the system
+      description: Adds new information to the knowledge base for future question answering
       requestBody:
         required: true
         content:
-          multipart/form-data:
+          application/json:
             schema:
               type: object
               properties:
-                file:
+                content:
                   type: string
-                  format: binary
-                  description: The PDF file to upload.
-                user_id:
-                  type: string
-                  description: The user ID associated with the upload.
+                  description: The text content to add to the knowledge base
+              required:
+                - content
       responses:
         '200':
-          description: PDF data added successfully
+          description: Knowledge base updated successfully
           content:
             application/json:
               schema:
@@ -39,9 +35,9 @@ paths:
                 properties:
                   message:
                     type: string
-                    example: PDF data added successfully
+                    example: "Updated the knowledge base successfully."
         '500':
-          description: Internal Server Error
+          description: Internal server error
           content:
             application/json:
               schema:
@@ -49,12 +45,12 @@ paths:
                 properties:
                   detail:
                     type: string
-                    example: An error occurred while processing the request
-  /ask_question:
+                    description: Error message
+
+  /ask:
     post:
-      summary: Ask a question based on uploaded PDFs
-      description: Processes a conversation request and generates a response based on the user's question and uploaded PDF data.
-      operationId: askQuestion
+      summary: Ask a question
+      description: Ask a question and get an answer based on the knowledge base and chat history
       requestBody:
         required: true
         content:
@@ -63,7 +59,7 @@ paths:
               $ref: '#/components/schemas/ConversationRequest'
       responses:
         '200':
-          description: AI-generated response
+          description: Successful response
           content:
             application/json:
               schema:
@@ -71,9 +67,9 @@ paths:
                 properties:
                   response:
                     type: string
-                    example: The AI-generated response
+                    description: The AI-generated answer
         '500':
-          description: Internal Server Error
+          description: Internal server error
           content:
             application/json:
               schema:
@@ -81,7 +77,8 @@ paths:
                 properties:
                   detail:
                     type: string
-                    example: An error occurred while processing the request
+                    description: Error message
+
 components:
   schemas:
     Message:
@@ -89,28 +86,25 @@ components:
       properties:
         role:
           type: string
-          description: The role of the message sender (e.g., user or system).
+          description: The role of the message sender (e.g., "user" or "assistant")
         content:
           type: string
-          description: The content of the message.
-          nullable: true
+          description: The content of the message
+          default: ""
       required:
         - role
+
     ConversationRequest:
       type: object
       properties:
-        user_id:
-          type: string
-          description: The ID of the user asking the question.
         message:
           type: string
-          description: The user's question.
+          description: The current question or message from the user
         chat_history:
           type: array
           items:
             $ref: '#/components/schemas/Message'
-          description: The history of the conversation.
+          description: The history of previous messages in the conversation
       required:
-        - user_id
         - message
         - chat_history

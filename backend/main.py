@@ -1,15 +1,13 @@
 import logging
 import os
-import tempfile
 from typing import List, Optional
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException
 from langchain.chains import create_history_aware_retriever, create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain_community.document_loaders import PyPDFLoader
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_openai import ChatOpenAI
-from langchain_openai.embeddings import OpenAIEmbeddings
+from langchain_openai import AzureChatOpenAI
+from langchain_openai.embeddings import AzureOpenAIEmbeddings
 from langchain_postgres import PGVector
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pydantic import BaseModel
@@ -30,14 +28,18 @@ app.add_middleware(
 )
 
 # Initialize OpenAI embeddings
-embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+embeddings = AzureOpenAIEmbeddings(
+    deployment="text-embedding-3-small",
+    openai_api_version="2024-06-01",
+    azure_endpoint=os.environ["CHOREO_AZUREOPENAI_SERVICEURL"],
+    openai_api_key=os.environ["CHOREO_AZUREOPENAI_AZURE_OPENAI_API_KEY"])
 
 # Load values from environment variables
-host = os.getenv("DB_HOST")
-username = os.getenv("DB_USERNAME")
-password = os.getenv("DB_PASSWORD")
-port = os.getenv("DB_PORT", "11867")
-dbname = os.getenv("DB_NAME")
+host = os.getenv("CHOREO_MFST_DB_HOSTNAME")
+username = os.getenv("CHOREO_MFST_DB_USERNAME")
+password = os.getenv("CHOREO_MFST_DB_PASSWORD")
+port = os.getenv("CHOREO_MFST_DB_PORT", "11867")
+dbname = os.getenv("CHOREO_MFST_DB_DATABASENAME")
 collection_name = os.getenv("DB_COLLECTION_NAME", "my_docs")
 
 connection = f"postgresql+psycopg://{username}:{password}@{host}:{port}/{dbname}"
@@ -51,7 +53,11 @@ vector_store = PGVector(
 )
 
 # Initialize OpenAI language model
-llm = ChatOpenAI(model_name="gpt-4o-mini")
+llm = AzureChatOpenAI(
+    deployment_name="choreo-ai-chat-4o",
+    openai_api_version="2024-02-01",
+    azure_endpoint=os.environ["CHOREO_AZUREOPENAI_SERVICEURL"],
+    openai_api_key=os.environ["CHOREO_AZUREOPENAI_AZURE_OPENAI_API_KEY"])
 
 
 # Pydantic models for request validation
@@ -61,19 +67,17 @@ class Message(BaseModel):
 
 
 class ConversationRequest(BaseModel):
-    user_id: str
     message: str
     chat_history: List[Message]
 
 
-@app.post("/upload_pdf")
-async def upload_pdf(file: UploadFile = File(...), user_id: str = Form(...)):
+@app.post("/add")
+async def add_knowledge(content: str):
     """
-    Add data from a PDF file to the vector store.
+    Use to add new information to the ask questions
 
     Args:
-        file (UploadFile): The uploaded PDF file.
-        user_id (str): The user ID associated with the upload.
+        content (text): Adde knowledge to the system.
 
     Returns:
         dict: A message indicating success.
@@ -82,29 +86,16 @@ async def upload_pdf(file: UploadFile = File(...), user_id: str = Form(...)):
         HTTPException: If there's an error processing the request.
     """
     try:
-        # Create a temporary file to store the uploaded PDF
-        with tempfile.NamedTemporaryFile() as temp_file:
-            temp_file.write(await file.read())
-            temp_file_path = temp_file.name
-
-            # Load the PDF
-            loader = PyPDFLoader(temp_file_path)
-            docs = await loader.aload()
-
         # Split the document into chunks
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000,
             chunk_overlap=200,
         )
-        chunks = text_splitter.split_documents(docs)
-
-        # Add user_id to metadata
-        for chunk in chunks:
-            chunk.metadata["user_id"] = user_id
+        chunks = text_splitter.split_text(content)
 
         # Add chunks to vector store
-        await vector_store.aadd_documents(chunks)
-        return {"message": "PDF data added successfully"}
+        await vector_store.aadd_texts(chunks)
+        return {"message": "Updated the knowledge base successfully."}
     except Exception as e:
         logging.error(f"Error processing request: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -127,10 +118,10 @@ Provide concise answers, structured neatly using simple Markdown.
 {context}"""
 
 
-@app.post("/ask_question")
+@app.post("/ask")
 async def ask_question(request: ConversationRequest):
     """
-       Process a conversation request and generate a response.
+       By looking the conversation request answers to the latest user question.
 
        Args:
            request (ConversationRequest): The conversation request details.
@@ -142,8 +133,6 @@ async def ask_question(request: ConversationRequest):
            HTTPException: If there's an error processing the request.
        """
     try:
-        # Extract user ID and the current message from the request.
-        user_id = request.user_id
         message = request.message
 
         # Convert chat history to a list of tuples containing roles and message content.
@@ -152,7 +141,7 @@ async def ask_question(request: ConversationRequest):
         # Initialize a retriever from the vector store.
         # Filtered by user ID and limiting to 5 results.
         retriever = vector_store.as_retriever(
-            search_kwargs={"filter": {"user_id": user_id}, "k": 5}
+            search_kwargs={"k": 5}
         )
 
         # Create a prompt template for the history aware retriever
