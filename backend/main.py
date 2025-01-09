@@ -108,14 +108,8 @@ which can be understood without the chat history. Do NOT answer the question, \
 just reformulate it if needed and otherwise return it as is."""
 
 # Instructions for the LLM to generate an answer to the user question using the provided context.
-qa_system_prompt = """You are an assistant for question-answering tasks. \
-Use the following retrieved context to answer the question. \
-Only refer to the provided context when forming your answer. \
-If there isn't enough information to answer the question, \
-simply state that you don't have sufficient information. \
-Provide concise answers, structured neatly using simple Markdown.
-
-{context}"""
+qa_system_prompt = """Answer the question by referring to the provided context. \
+If there isn't enough information to answer the question polity refuse to answer."""
 
 
 @app.post("/ask")
@@ -160,7 +154,7 @@ async def ask_question(request: ConversationRequest):
         qa_prompt = ChatPromptTemplate.from_messages([
             ("system", qa_system_prompt),
             MessagesPlaceholder("chat_history"),
-            ("human", "{input}"),
+            ("human", "Context: {context}\nQuestion: {input}"),
         ])
 
         # Create a chain that processes retrieved documents to generate an answer.
