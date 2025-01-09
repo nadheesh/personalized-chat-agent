@@ -7,7 +7,8 @@ endpoints:
       basePath: /
       port: 5000
       type: REST
-      networkVisibilities: Public
+      networkVisibilities:
+        - Public
       schemaFilePath: openapi.yaml
 
 dependencies:
